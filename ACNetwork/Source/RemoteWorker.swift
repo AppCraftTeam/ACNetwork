@@ -10,8 +10,8 @@ import Foundation
 public protocol RemoteWorkerInterface: AnyObject {
     var isLoggingEnabled: Bool { get set }
     
-    func execute<T: Codable>(_ request: URLRequest, model: T.Type, completion: @escaping (_ result: T?, _ response: HTTPURLResponse?, _ error: Error?) -> Void)
-    func cancel(_ request: URLRequest)
+    func execute(_ request: URLRequest, completion: @escaping (_ result: Data?, _ response: HTTPURLResponse?, _ error: Error?) -> Void) -> String
+    func cancel(_ taskUid: String)
 }
 
 open class RemoteWorker: NSObject, RemoteWorkerInterface {
@@ -39,112 +39,48 @@ open class RemoteWorker: NSObject, RemoteWorkerInterface {
     }
     
     // MARK: - RemoteWorkerInterface
-    public func execute<T: Codable>(_ request: URLRequest, model: T.Type, completion: @escaping (_ result: T?, _ response: HTTPURLResponse?, _ error: Error?) -> Void) {
-        guard let taskAbsoluteString: String = request.url?.absoluteString else {
-            let invalidRequestError = NSError(domain: "Invalid request", code: 999, userInfo: nil)
-            completion(nil, nil, invalidRequestError)
-            
-            return
-        }
+    
+    public func execute(_ request: URLRequest, completion: @escaping (_ result: Data?, _ response: HTTPURLResponse?, _ error: Error?) -> Void) -> String {
+        let newTaskUid: String = UUID().uuidString
         
-        if self.activeTasks[taskAbsoluteString] != nil {
+        let newTask = self.urlSession?.dataTask(with: request, completionHandler: { data, response, error in
             if self.isLoggingEnabled {
-                NSLog("[ACNetwork:RemoteWorker] - WARNING: Same task < \(request.url?.absoluteString ?? "UNKNOWN") > canceled")
-            }
-            self.activeTasks[taskAbsoluteString]?.cancel()
-        }
-        
-        let newTask = self.urlSession?.dataTask(with: request, completionHandler: { (data, response, error) in
-            if let receivedData = data, let receivedResponse = response as? HTTPURLResponse, error == nil {
-                if self.isLoggingEnabled {
-                    NSLog("[ACNetwork:RemoteWorker] - REQUEST URL: \(request.url?.absoluteString ?? "UNKNOWN")")
-                    if let requestHeaders = request.allHTTPHeaderFields {
-                        NSLog("[ACNetwork:RemoteWorker] - REQUEST HEADERS: \(requestHeaders)")
-                    }
-                    if let requestBody = request.httpBody, let requestBodyString = String(data: requestBody, encoding: .utf8) {
-                        NSLog("[ACNetwork:RemoteWorker] - REQUEST BODY: \(requestBodyString)")
-                    }
-                    
-                    NSLog("[ACNetwork:RemoteWorker] - RESPONSE CODE: \(receivedResponse.statusCode)")
-                    if let responseHeaders = receivedResponse.allHeaderFields as? [String: Any] {
+                NSLog("[ACNetwork:RemoteWorker] - REQUEST URL: \(request.url?.absoluteString ?? "UNKNOWN")")
+                if let requestHeaders = request.allHTTPHeaderFields {
+                    NSLog("[ACNetwork:RemoteWorker] - REQUEST HEADERS: \(requestHeaders)")
+                }
+                if let requestBody = request.httpBody, let requestBodyString = String(data: requestBody, encoding: .utf8) {
+                    NSLog("[ACNetwork:RemoteWorker] - REQUEST BODY: \(requestBodyString)")
+                }
+                if let httpResponse = response as? HTTPURLResponse {
+                    NSLog("[ACNetwork:RemoteWorker] - RESPONSE CODE: \(httpResponse.statusCode)")
+                    if let responseHeaders = httpResponse.allHeaderFields as? [String: Any] {
                         NSLog("[ACNetwork:RemoteWorker] - RESPONSE HEADERS: \(responseHeaders)")
                     }
-                    let stringData = String(data: receivedData, encoding: .utf8) ?? "UNKNOWN"
+                }
+                if let recievedData = data, let stringData = String(data: recievedData, encoding: .utf8) {
                     debugPrint("[ACNetwork:RemoteWorker] - RESPONSE DATA: \(stringData)")
-                }
-                
-                switch receivedResponse.statusCode {
-                case 200:
-                    if let okString = String(data: receivedData, encoding: .utf8), okString.lowercased() == "ok" {
-                        self.activeTasks[taskAbsoluteString] = nil
-                        completion(nil, receivedResponse, nil)
-                        
-                        return
-                    }
-                    
-                    do {
-                        let jsonDecoder = JSONDecoder()
-                        let object = try jsonDecoder.decode(model, from: receivedData)
-                        
-                        self.activeTasks[taskAbsoluteString] = nil
-                        completion(object, receivedResponse, nil)
-                    } catch let parsingError {
-                        if self.isLoggingEnabled {
-                            NSLog("[ACNetwork:RemoteWorker] - ERROR: Parsing error \(parsingError.localizedDescription)")
-                        }
-                        
-                        self.activeTasks[taskAbsoluteString] = nil
-                        completion(nil, receivedResponse, parsingError)
-                    }
-                default:
-                    let serverError = NSError(
-                        domain: "",
-                        code: receivedResponse.statusCode,
-                        userInfo: nil
-                    )
-                    self.activeTasks[taskAbsoluteString] = nil
-                    completion(nil, receivedResponse, serverError)
-                }
-            } else {
-                if let receivedResponse = response as? HTTPURLResponse {
-                    if self.isLoggingEnabled {
-                        NSLog("[ACNetwork:RemoteWorker] - RESPONSE CODE: \(receivedResponse.statusCode)")
-                        if let responseHeaders = receivedResponse.allHeaderFields as? [String: Any] {
-                            NSLog("[ACNetwork:RemoteWorker] - RESPONSE HEADERS: \(responseHeaders)")
-                        }
-                        
-                        NSLog("[ACNetwork:RemoteWorker] - ERROR: Session error")
-                        NSLog("[ACNetwork:RemoteWorker] - ERROR CODE: \((error as NSError?)?.code ?? -1)")
-                        NSLog("[ACNetwork:RemoteWorker] - ERROR DESCRIPTION: \((error as NSError?)?.description ?? "UNKNOWN")")
-                    }
-                    
-                    self.activeTasks[taskAbsoluteString] = nil
-                    completion(nil, receivedResponse, error)
                 } else {
-                    if self.isLoggingEnabled {
-                        NSLog("[ACNetwork:RemoteWorker] - ERROR: Internal error")
-                        NSLog("[ACNetwork:RemoteWorker] - ERROR CODE: \((error as NSError?)?.code ?? -1)")
-                        NSLog("[ACNetwork:RemoteWorker] - ERROR DESCRIPTION: \((error as NSError?)?.description ?? "UNKNOWN")")
-                    }
-                    
-                    self.activeTasks[taskAbsoluteString] = nil
-                    completion(nil, nil, error)
+                    NSLog("[ACNetwork:RemoteWorker] - RESPONSE DATA: UNKNOWN")
                 }
             }
+            
+            self.activeTasks[newTaskUid] = nil
+            completion(data, response as? HTTPURLResponse, error)
         })
         
-        self.activeTasks[taskAbsoluteString] = newTask
-        self.activeTasks[taskAbsoluteString]?.resume()
+        self.activeTasks[newTaskUid] = newTask
+        self.activeTasks[newTaskUid]?.resume()
+        
+        return newTaskUid
     }
     
-    public func cancel(_ request: URLRequest) {
-        guard let taskAbsoluteString: String = request.url?.absoluteString else { return }
-        
-        if self.activeTasks[taskAbsoluteString] != nil {
+    public func cancel(_ taskUid: String) {
+        if self.activeTasks[taskUid] != nil {
             if self.isLoggingEnabled {
-                NSLog("[ACNetwork:RemoteWorker] - WARNING: Task < \(request.url?.absoluteString ?? "UNKNOWN") > canceled")
+                NSLog("[ACNetwork:RemoteWorker] - WARNING: Task < \(taskUid) > canceled")
             }
-            self.activeTasks[taskAbsoluteString]?.cancel()
+            self.activeTasks[taskUid]?.cancel()
         }
     }
 }
