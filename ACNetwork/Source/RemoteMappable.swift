@@ -14,7 +14,7 @@ public protocol RemoteMappable {
 
 extension RemoteMappable {
     
-    public func mapResponseToDomain() -> AnyObject {
+    public func mapResponseToDomain() -> AnyObject? {
         NSLog("[ACNetwork:RemoteMappable] - ERROR: \(self) response to domain mapper not implemented.")
         return self as AnyObject
     }
