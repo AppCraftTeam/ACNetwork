@@ -10,23 +10,29 @@ import XCTest
 
 class ACNetworkTests: XCTestCase {
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    func testSimpleParameterStringGenerator() throws {
+        let params: [String: Any] = [
+            "param1": 1,
+            "param2": "bar",
+        ]
+        let str = ParameterStringGenerator.generate(with: params)
+        XCTAssertTrue(str.contains("param1=1"))
+        XCTAssertTrue(str.contains("param2=bar"))
+        XCTAssertTrue(str.filter { $0 == "&" }.count == params.count - 1)
     }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-    }
-
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
+    
+    func testAllParameterStringGenerator() throws {
+        let params: [String: Any] = [
+            "param1": 1,
+            "param2": "bar",
+            "param3": [1,2,3],
+            "param4": ["foo", "bar"]
+        ]
+        let str = ParameterStringGenerator.generate(with: params)
+        XCTAssertTrue(str.contains("param1=1"))
+        XCTAssertTrue(str.contains("param2=bar"))
+        XCTAssertTrue(str.contains("param3=1,2,3"))
+        XCTAssertTrue(str.contains("param4=foo,bar"))
+        XCTAssertTrue(str.filter { $0 == "&" }.count == params.count - 1)
     }
 }
