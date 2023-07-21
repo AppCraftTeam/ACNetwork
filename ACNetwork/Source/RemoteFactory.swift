@@ -156,40 +156,8 @@ public enum RemoteFactory {
         return request
     }
     
-    private static func generateUrlString(with parameters: [String: Any]) -> String {
-        let parameterArray = parameters.map { key, value -> String in
-            guard let escapedKey = key.addingPercentEncodingForUrlQueryValue() else { return "" }
-            
-            if let stringValue = value as? String {
-                guard let escapedValue = stringValue.addingPercentEncodingForUrlQueryValue() else { return "" }
-                return "\(escapedKey)=\(escapedValue)"
-            }
-            
-            if let arrayValue = value as? [Any] {
-                var arrayParameter: [String] = []
-                
-                for index in 0..<arrayValue.count {
-                    var element: String
-                    if let stringElement = arrayValue[index] as? String {
-                        element = stringElement
-                    } else {
-                        element = "\(arrayValue[index])"
-                    }
-                    
-                    guard let escapedElement = element.addingPercentEncodingForUrlQueryValue() else { continue }
-                    
-                    arrayParameter.append("\(escapedKey)[]=\(escapedElement)")
-                }
-                
-                return arrayParameter.joined(separator: "&")
-            }
-            
-            guard let escapedValue = "\(value)".addingPercentEncodingForUrlQueryValue() else { return "" }
-            
-            return "\(escapedKey)=\(escapedValue)"
-        }
-        
-        return parameterArray.joined(separator: "&")
+    static func generateUrlString(with parameters: [String: Any]) -> String {
+        ParameterStringGenerator.generate(with: parameters)
     }
     
     private static func generateBoundaryString() -> String {
